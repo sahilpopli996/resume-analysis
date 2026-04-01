@@ -5,12 +5,18 @@ import os
 import PyPDF2 as pdf
 from dotenv import load_dotenv
 import time
-
+import streamlit as st
 # ✅ Load environment variables
-load_dotenv()
+# load_dotenv()
 
 # ✅ Setup client (ONLY new SDK)
-client = genai.Client(api_key=os.getenv("GOOGLE_API_KEY"))
+
+try:
+    api_key = st.secrets["GOOGLE_API_KEY"]   # works on cloud
+except Exception:
+    api_key = os.getenv("GOOGLE_API_KEY")    # works locally
+
+client = genai.Client(api_key=api_key)
 
 # ✅ Gemini response with retry (handles rate limit)
 def get_gemini_response(input_text):
