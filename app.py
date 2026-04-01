@@ -1,75 +1,106 @@
 import streamlit as st
 from streamlit_extras.add_vertical_space import add_vertical_space
-import google.generativeai as genai
+from google import genai
 import os
 import PyPDF2 as pdf
 from dotenv import load_dotenv
-import json
+import time
 
-load_dotenv() ## load all our environment variables
+# ✅ Load environment variables
+load_dotenv()
 
-genai.configure(api_key=os.getenv("GOOGLE_API_KEY"))
+# ✅ Setup client (ONLY new SDK)
+client = genai.Client(api_key=os.getenv("GOOGLE_API_KEY"))
 
-def get_gemini_repsonse(input):
-    model=genai.GenerativeModel('gemini-pro')
-    response=model.generate_content(input)
-    return response.text
+# ✅ Gemini response with retry (handles rate limit)
+def get_gemini_response(input_text):
+    for _ in range(3):
+        try:
+            response = client.models.generate_content(
+                model="gemini-2.0-flash",
+                contents=input_text
+            )
+            return response.text
+        except Exception as e:
+            time.sleep(5)
+    return "⚠️ API rate limit hit. Please try again."
 
+# ✅ Extract text from PDF
 def input_pdf_text(uploaded_file):
-    reader=pdf.PdfReader(uploaded_file)
-    text=""
-    for page in range(len(reader.pages)):
-        page=reader.pages[page]
-        text+=str(page.extract_text())
-    return text
+    reader = pdf.PdfReader(uploaded_file)
+    text = ""
+    for page in reader.pages:
+        text += str(page.extract_text())
 
-#Prompt Template
+    # 🔥 IMPORTANT: limit size (avoid token errors)
+    return text[:1500]
 
-input_prompt="""
-Hey Act Like a skilled or very experience ATS(Application Tracking System)
-with a deep understanding of tech field,software engineering,data science ,data analyst
-and big data engineer. Your task is to evaluate the resume based on the given job description.
-You must consider the job market is very competitive and you should provide 
-best assistance for improving thr resumes. Assign the percentage Matching based 
-on Jd and
-the missing keywords with high accuracy
-resume:{text}
-description:{jd}
+# ✅ Prompt template
+input_prompt = """
+You are an advanced ATS (Application Tracking System).
 
-I want the response as per below structure
-{{"JD Match": "%", "MissingKeywords": [], "Profile Summary": ""}}
+Evaluate the resume based on the job description.
+
+resume: {text}
+job description: {jd}
+
+Return ONLY JSON format:
+{{
+  "JD Match": "%",
+  "MissingKeywords": [],
+  "Profile Summary": ""
+}}
 """
 
-## streamlit app
+# ---------------- STREAMLIT UI ---------------- #
 
 with st.sidebar:
     st.title("Smart ATS for Resumes")
     st.subheader("About")
-    st.write("This sophisticated ATS project, developed with Gemini Pro and Streamlit, seamlessly incorporates advanced features including resume match percentage, keyword analysis to identify missing criteria, and the generation of comprehensive profile summaries, enhancing the efficiency and precision of the candidate evaluation process for discerning talent acquisition professionals.")
-    
-    st.markdown("""
-    - [Streamlit](https://streamlit.io/)
-    - [Gemini Pro](https://deepmind.google/technologies/gemini/#introduction)
-    - [makersuit API Key](https://makersuite.google.com/)
-    - [Github](https://github.com/praj2408/End-To-End-Resume-ATS-Tracking-LLM-Project-With-Google-Gemini-Pro) Repository
-                
-    """)
-    
-    add_vertical_space(5)
-    st.write("Made with ❤ by Prajwal Krishna.")
-    
-    
+    st.write("AI-powered ATS system using Gemini")
 
+    st.markdown("""
+    - Streamlit  
+    - Gemini AI  
+    - Resume Analyzer  
+    """)
+
+    add_vertical_space(2)
+    st.write("Made with ❤")
 
 st.title("Smart Application Tracking System")
 st.text("Improve Your Resume ATS")
-jd=st.text_area("Paste the Job Description")
-uploaded_file=st.file_uploader("Upload Your Resume",type="pdf",help="Please uplaod the pdf")
+
+jd = st.text_area("Paste the Job Description")
+uploaded_file = st.file_uploader("Upload Your Resume", type="pdf")
 
 submit = st.button("Submit")
 
+# ---------------- MAIN LOGIC ---------------- #
+
 if submit:
-    if uploaded_file is not None:
-        text=input_pdf_text(uploaded_file)
-        response=get_gemini_repsonse(input_prompt)
-        st.subheader(response)
+    if uploaded_file is not None and jd.strip() != "":
+        text = input_pdf_text(uploaded_file)
+
+        final_prompt = input_prompt.format(text=text, jd=jd)
+
+        response = get_gemini_response(final_prompt)
+
+        st.subheader("📊 Analysis Result")
+        st.write(response)
+
+    else:
+        st.warning("⚠️ Please upload resume and paste job description")
+        import time
+
+def get_gemini_response(input_text):
+    for _ in range(3):
+        try:
+            response = client.models.generate_content(
+                model="gemini-2.0-flash",
+                contents=input_text
+            )
+            return response.text
+        except Exception:
+            time.sleep(10)
+    return "⚠️ Rate limit hit. Try again in a minute."
